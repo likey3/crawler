@@ -16,6 +16,9 @@ import org.springframework.util.ResourceUtils;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @SpringBootApplication
 public class NovelApplication implements CommandLineRunner{
@@ -45,31 +48,33 @@ public class NovelApplication implements CommandLineRunner{
 
     @Override
     public void run(String... args) throws Exception {
-        Book book;
-        Elements locElements;
         int locElementsSize;
-        Document bookDocument;
-        String name;
-        String type;
-        String state;
-        Elements directoryElements;
-        String directoryURL;
-        String directoryName;
 
-        locElements = Jsoup.parse(ResourceUtils.getFile("classpath:sitemap.xml"),"utf-8").select("url>loc");
-        locElementsSize = locElements.size();
-        for(int i = 1; i < locElementsSize; i++){
-            bookDocument = Jsoup.connect(locElements.get(i).text() + "list.html").get();
-            name = bookDocument.select("h3").text();
-            type = bookDocument.select("span[itemprop='category']").text();
-            state = bookDocument.select("div.list2").first().select("span").last().text();
-            directoryElements = bookDocument.select("li[itemprop='itemListElement']");
-            for(int j = 0; j < directoryElements.size(); j++){
-                directoryURL = directoryElements.get(j).select("a").first().absUrl("href");
-                directoryName = directoryElements.get(j).select("span[itemprop='name']").first().text();
-                book = new Book(name, directoryName, type, j + 1, "", state);
-                LoadContentAndSave(directoryURL, book);
+        Stream<String> urls = Jsoup.parse(ResourceUtils.getFile("classpath:sitemap.xml"),"utf-8")
+                .select("url>loc").stream().map(x -> x.text() + "list.html");
+
+        urls.parallel().forEach(url -> {
+            try {
+                process(url);
+            } catch (IOException | InterruptedException e) {
+                e.printStackTrace();
             }
+        });
+    }
+
+    public void process(String url) throws IOException, InterruptedException {
+        Document bookDocument = Jsoup.connect(url).get();
+
+        String name = bookDocument.select("h3").text().trim();
+        String type = bookDocument.select("span[itemprop='category']").text().trim();
+        String state = bookDocument.select("div.list2").first().select("span").last().text().trim();
+        Elements directoryElements = bookDocument.select("li[itemprop='itemListElement']");
+
+        for(int j = 0; j < directoryElements.size(); j++){
+            String directoryURL = directoryElements.get(j).select("a").first().absUrl("href");
+            String directoryName = directoryElements.get(j).select("span[itemprop='name']").first().text().trim();
+            Book book = new Book(name, directoryName, type, j + 1, "", state);
+            LoadContentAndSave(directoryURL, book);
         }
     }
 }
